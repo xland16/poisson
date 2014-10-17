@@ -1,0 +1,877 @@
+<body bgcolor="#E4D1BA"> 
+<title>Computer Vision Final Project</title>
+<center><h1>CS 4501: Computer Vision<br>Final Project - Poisson Image Editing</h1>
+<h3>Tom Crossland (tcc4dr), Masood Malekghassemi (smm2rc), AJ Mehalic (ajm4ay)</h3></center>
+
+<h2>Introduction and Proposal</h2>
+The main project goal was to have a program capable of taking two scaled color images, called the source and the target, and cloning the source into the target such that the boundary of the source on the target appears seamless without destruction of the source. The user would choose the boundaries of the source and the target images, thus choosing a distinct set of pixels from the source and a distinct location in the target. Upon mapping the source into the target, the project them would attempt to smooth out the boundaries, removing/changing any jarring differences found across the borders of the source image by modifying the source image pixels. The project team aimed to compute such images as these:<br><br>
+
+<center><table class="image">
+<caption align="bottom"><i><b>Figure 1.1</b> Seamless copying of Source (bear and children) into Destination (empty pool).<br>Image taken from Perez et. al.</i></caption>
+<tr><td>
+<img src="./Images/Additional Pictures/perezexample.png" border="3"></img>
+</td></tr>
+</table></center><br>
+
+The exact method the project team employed is 'seamless cloning' as described in the research paper 'Poisson Image Editing' by Perez et. al.. This method works with the measured gradients across both images, modifying the insertion region by attempting to create a boundary between the images with a gradient of zero. As this appears to create a massive systems of equations, the project team decided at first at only looking at relatively small images (the specific sizes of which would be determined), and possibly only grayscale representations thereof to start. In summary, the project team hoped to understand, implement, and analyze the equations and solve-methods specified in the Perez et. al. paper.
+
+<br><br><hr>
+<h2>Previous Work</h2>
+Poisson image editing as described by Patrick Perez et. al. (research paper included <a href="http://www.google.com/url?sa=t&source=web&cd=1&ved=0CBoQFjAA&url=http%3A%2F%2Fciteseerx.ist.psu.edu%2Fviewdoc%2Fdownload%3Fdoi%3D10.1.1.133.6932%26rep%3Drep1%26type%3Dpdf&rct=j&q=poisson%20image%20editing&ei=7tC9TaH8O4GbtwemktHRBQ&usg=AFQjCNH-itt3dUWXT4OOqCiHhBqANcFRYw&cad=rja">here</a>) is a method of smoothly cloning a sequence of pixels from one image onto another image. The image being cloned will henceforth be termed the 'source' image, and the image it is being cloned onto the 'target' image. The particular source image pixels are selected by a mask that is then mapped onto the target image. The pixels adjacent to the mask in the target image are henceforth termed the edge pixels.
+<br><br>
+The method itself is a guided interpolation, in the sense that the values desired (cloned values of the source pixels in the masked area of the target image) are found by interpolating the values of the edge pixels into the masked area of the target image under the guidance of data from the masked source image. This guidance is provided by the gradient of the source image, that is, we use the edge pixels as a set of known values and then try to move their values up and down as we progress into the masked target image area based on how the source image behaves within its masked area.
+<br><br>
+Mathematically, it's a minimization problem of an overdetermined system. The variables are the pixel values for the masked area of the target image under the guidance of the source image and, for the sake of constraining the system to the edges of the target image, the edge pixels. The edge pixels are anchored to constants (their values in the target image), while the masked pixels in the target image each receive two equations: one for setting its x-gradient to be equivalent to the x-gradient of the source image, and another for setting its y-gradient to be equivalent to the y-gradient of the source. Minimizing the error in the solution vector is a linear regression problem, which means that the overdetermined system of equations may be 'solved' by utilizing the pseudoinverse of the coefficient matrix. Upon solving for the solution vector of pixels, the selected pixels are written into the masked portion of the target image and the cloning process is complete.
+<br><br><hr>
+<h2>Design and Implementation</h2>
+<h3>Note</h3>
+Because the project team had some free time before the project presentation, the team wrote a new, more user-friendly GUI.  This change is not reflected in this report; however, it will be demonstrated during the final presentation. If there are questions about the new GUI, please feel free to contact the project team.
+<h3>runPoisson.m</h3>
+The system designed to perform seamless cloning was implemented in a series of Matlab functions.  The system's main function was written as <a href="./runPoisson.m">runPoisson.m</a>.  runPoisson.m takes in three different parameters: sFile, tFile, and destFile.  First, the project assumes that all images will be located in and saved to somewhere in a subdirectory of the current working directory called "Images." sFile is the file name of the source picture.  This is the picture that will be cropped and placed onto a target into to be seamlessly cloned.  The program assumes that this is a valid color, non-grayscale image for ease of implementation.  The program also assumes that the file is located a subdirectory of the "Images" directory called "Sources."  sFile is the file name of the source picture.  The program assumes that this is a color, non-grayscale image for ease of implementation.  The program also assumes that the file is located a subdirectory of the "Images" directory called "Sources."  tFile is the file name of the target picture.  This is the picture that the selected source picture is being seamlessly cloned into.  The program assumes that this is a valid color, non-grayscale image for ease of implementation.  The program also assumes that the file is located a subdirectory of the current working directory called "Targets." destFile is the file name for the finished product of the seamless cloning. runPoisson calls other helper Matlab functions we wrote to perform seamless cloning on the specified images.  First, runPoisson calls selectiveCut to get the selection of the source image that the user wants to seamlessly clone onto the target image and the location of where the user wants to perform the cloning. Using this information, the function calls the function createBeforeImg.m to illustrate the selected source image pixels mapped onto the specified location on the target image.  The runPoisson function then takes the individual red, blue, and green intensities of the cut source and target images and passes them along with the cut mask to the poissonClone function.  This performs the actual seamless cloning.  The runPoisson function takes the seamlessly cloned intensity images and combines them into a single RGB image.  The final result is the selected portion of the source image seamlessly cloned onto the target image in color.  This is saved in a subdirectory of the "Images" directory called "Results." 
+<h3>selectiveCut.m</h3>
+The selection of the source image that the user wants to seamlessly clone onto the target image and the location of where the user wants to perform the cloning need to be obtained.  To do this process, <a href="./selectiveCut.m">selectiveCut.m</a> was written.  This piece of code was inspired by and based off of a previously implemented Matlab code for free-form selection located <a href="http://www.mathworks.com/matlabcentral/newsreader/view_thread/299090">here</a>.  selectiveCut.m takes in two parameters: sFile and tFile.  These are assumed to be the same first two inputs for runPoissom.m.  The assumptions for the same inputs in runPoisson.m still hold true for the ones for selectiveCut.m. In this helper function, the source image is displayed.  The user is asked to cut out a selection of the source image to seamlessly clone onto the target image.  The user clicks and drags the mouse around the portion of the image they want to seamlessly clone, lassoing around the desired pixels.  Upon completion of the selection, the program displays the original image, a binary mask of the selected region, a new image of the mask burned into the original image, and the masked image. An example of this visualization is provided below.<br><br>
+<center><table class="image">
+<caption align="bottom"><i><b>Figure 2.1</b> Various visualizations of the source image after selection</i></caption>
+<tr><td>
+<img src="./Images/Additional Pictures/sourcedisplay.png" border="3" width="959" height="516"></img>
+</td></tr>
+</table></center><br>
+The program then creates a cut version of the masked image and the source image selection.  This cut version includes only the "significant" pixels of the selected region. Therefore, the cut masked image will be a rectangle ranging from the left-most pixel in the mask to the right-most pixel in the mask and the top-most pixel in the mask to the bottom-most pixel in the mask with a one pixel border outside of the mask.  The same region is cut from the source image to create the cut source image.  Because of the one pixel border, pixels at the border of the source image cannot be selected to be seamlessly cloned.  The program assumes that the selected portion of the source will not include any of these pixels.<br><br>
+ The program then displays the target image.  The user clicks where he or she wants to seamlessly clone the source image on the target image. This clicked location corresponds to where the center of the selected source image will be on the target image. Our implementation of seamless cloning only works when all of the pixels of the cut source correspond one-to-one with a pixel in the target.  Therefore, the program will not work if the cut source is placed in such a way on the target that some of the pixels in the cut source exceed the border of the target image.  The cut source image cannot be bigger than the target image. If this occurs, the user is notified and asked to replace where he or she wants the source image on the target. If a valid placement is made, the function displays the target image with the pixels corresponding to the cut mask burned.  It then asks the user if he or she wants to keep this positioning.  If the user answers yes through a dialogue box, the program proceeds to seamless cloning.  Else, the function asks the user to reposition where he or she wants the source on the target.  A visualization of the positioning acceptance process is provided below. Once the positioning is accepted, the function cuts the target image to include the pixels in the target corresponding to the pixels in the cut source image as determined by the user.  The function returns the matrix represenatations of the cut source, cut mask, and cut target images.  Various representations of the mask images are saved in the "Masks" subdirectory.  In addition, it returns the x and y positions on the target image where the top left corner of the cut source image corresponds to.<br><br>
+<center><table>
+<caption align="bottom"><i><b>Figure 2.2</b> Visualization of the positioning acceptance process</i></caption>
+<tr><td>
+<img src="./Images/Additional Pictures/acceptanceprocess.png" border="3" width="960" height="514"></img>
+</td></tr>
+</table></center><br>
+<h3>createBeforeImg.m</h3>
+The createBeforeImg function (located in <a href="./createBeforeImg.m">createBeforeImg.m</a>) takes in six arguments: source, mask, target, Px, Py, and destFile.  source and mask are the cut source and mask images as determined by the selectiveCut function.  The target is the full representation of the target image.  Px and Py are the x and y positions on the target image where the top left corner of the cut source image corresponds to. destFile is the file name of the final image as inputted by the user in the runPoisson function.  The createBeforeImg function selectively copies over the pixels of the cut source image in the cut mask to their corresponding locations in the target image.  It saves these images in a subdirectory of the "Results" subdirectory. 
+<h3>poissonClone.m</h3>
+
+The poissonClone function (located in <a href="./poissonClone.m">poissonClone.m</a>) performs the actual Poisson image editing step. It takes in three arguments, source, mask, and target. These are all assumed to be 2-dimensional matrices of the same size. source and target are intensity image matrices (of any color scaling, ex. 0-255 integer values will work the same as 0-1.0 double values), while mask is a matrix that, when cast to Matlab's 'logical' type (values equal to 0 are set to 'false' [0], any other value is set to 'true' [1]), represents the selected locations in both source and target image matrices where the source image is to be cloned into the target. The mask must have a border of 'false' values. This implies that the original user selection must leave leave an outer border of pixels for the function to be called successfully, and that the calling function must ensure that the selection of the image passed has this border of just-outside-the-selection pixels. We will define the unselected pixels directly adjacent to the selected pixels as 'edge pixels'. The implementation itself discovers the edge pixels by shifting the mask by a single pixel in different directions and subtracting the unshifted version, thus eliminating any for-loops and allowing matlab to vectorize the operation. The number of source pixels to be used in the calculation is determined by summing over the logical mask, the number of edge pixels (and thus pixels from the target image) by summing over the logical-ORing of discovered edges, and a helper index is created by cumulatively summing over the set of all relevant locations in the logical-ORing of selected mask and discovered edges (that is, this assigns a single number to each relevant pixel). The equations to be used in the poisson image editing are one equation representing the equivalence of the gradient (calculated by successive differencing) in the 'i' direction for each selected pixel of the source and each bottom-edge pixel, another for the 'j' direction for each selected pixel of the source and each right-edge pixel, and an equation anchoring each edge pixel value to its value in target. Here we used a pair of loops over every image matrix element location because utilizing Matlab vectorization functions (such as arrayfun and bsxfun) would have resulted in convoluted code. This set of equations is placed row-by-row into the overdetermined system of equations matrix [A | b] and solved for optimally via calculating the pseudoinverse of A (in Matlab, this is by default performed via QR-decomposition, a component step of SVD). This is equivalent to finding a least-squares regression of the solution vector of pixel values. These pixel values are then mapped via for-loop into the returned target image matrix. The rate-limiting step of this whole operation is the matrix pseudoinverse calculation (O(mn^2)).
+
+<br><br><hr>
+<h2>Results</h2>
+
+<center><h3><a name="3">Bear and Children in Water</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 3.1</b> Source images of a bear and children in the water.</i></caption>
+<tr><td>
+<img src="./Images/Sources/bear2.jpg" border="3"></img>
+</td><td>
+<img src="./Images/Sources/bearsnacks.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 3.2</b> Target image of water.</i></caption>
+<tr><td>
+<img src="./Images/Targets/water.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 3.3</b> Binary mask and masked source selection of bear.</i></caption>
+<tr><td>
+<img src="./Images/Masks/bear2-mask.jpg" border="3"></img>
+</td><td>
+<img src="./Images/Masks/bear2-maskedSource.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 3.4</b> Binary mask and masked source selection of children.</i></caption>
+<tr><td>
+<img src="./Images/Masks/bearsnacks-mask.jpg" border="3"></img>
+</td><td>
+<img src="./Images/Masks/bearsnacks-maskedSource.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 3.5</b> Selected source on target after seamless cloning with left/up adjacent difference gradient calculation.</i></caption>
+<tr><td>
+<img src="./Images/Results/bearnoms.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 3.6</b> Selected source on target after seamless cloning with average of left-right/up-down adjacent difference gradient calculation.</i></caption>
+<tr><td>
+<img src="./Images/Results/bearnoms2.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="4">Haunter with Ash</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 4.1</b> Source image of Haunter, a Pokemon.</i></caption>
+<tr><td>
+<img src="./Images/Sources/haunter.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 4.2</b> Target image of Ash from Pokemon.</i></caption>
+<tr><td>
+<img src="./Images/Targets/ash.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 4.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/pokeaj-before.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 4.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/pokeaj.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="5">Professor Abhi Shelat's Face on the Mona Lisa</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 5.1</b> Source image of Abhi Shelat</i></caption>
+<tr><td>
+<img src="./Images/Sources/shelat.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 5.2</b> Target image of the Mona Lisa.</i></caption>
+<tr><td>
+<img src="./Images/Targets/mona.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 5.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/monalot-before.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 5.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/monalot.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="6">Professor Shelat's Face on Professor Lawrence</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 6.1</b> Source image of Shelat</i></caption>
+<tr><td>
+<img src="./Images/Sources/shelat.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 6.2</b> Target image of Lawrence.</i></caption>
+<tr><td>
+<img src="./Images/Targets/jl.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 6.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/abhi lawrence-before.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 6.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/abhi lawrence.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="7">Professor Lawrence's Face on Professor Shelat</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 7.1</b> Source image of Lawrence.</i></caption>
+<tr><td>
+<img src="./Images/Sources/jl.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 7.2</b> Target image of Shelat.</i></caption>
+<tr><td>
+<img src="./Images/Targets/shelat.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 7.3</b> Binary mask and masked source selections.</i></caption>
+<tr><td>
+<img src="./Images/Masks/jl-mask.jpg" border="3"></img>
+</td><td>
+<img src="./Images/Masks/jl-maskedSource.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 7.4</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/jason shelat-before.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 7.5</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/jason shelat.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="8">Robin Williams in the Royal Wedding</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 8.1</b> Source image of Robin Williams</i></caption>
+<tr><td>
+<img src="./Images/Sources/rw.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 8.2</b> Target image of the Royal Wedding.</i></caption>
+<tr><td>
+<img src="./Images/Targets/rw2.jpg" border="3" width="935" height="652"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 8.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/princess robin-before.jpg" border="3" width="935" height="652"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 8.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/princess robin.jpg" border="3" width="935" height="652"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="9">Masood's Face on Kim Jong-il</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 9.1</b> Source image of Masood</i></caption>
+<tr><td>
+<img src="./Images/Sources/masoodles.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 9.2</b> Target image of Kim Jong-il.</i></caption>
+<tr><td>
+<img src="./Images/Targets/il.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 9.3</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/Masood Jong-il.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="10">Aliens at UVa</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 10.1</b> Source image of UFO</i></caption>
+<tr><td>
+<img src="./Images/Sources/ufo.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 10.2</b> Target image of UVa.</i></caption>
+<tr><td>
+<img src="./Images/Targets/uva.jpg" border="3" width="935" height="652"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 10.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/uvafo-before.jpg" border="3" width="935" height="652"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 10.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/uvafo.jpg" border="3" width="935" height="652"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="11">Lady with Cat</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 11.1</b> Source image of cat</i></caption>
+<tr><td>
+<img src="./Images/Sources/graphics cat.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 11.2</b> Target image of lady with unicorn.</i></caption>
+<tr><td>
+<img src="./Images/Targets/lady.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 11.3</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/catcorn.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="12">Professor Lawrence's Face on Water</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 12.1</b> Source image of Lawrence.</i></caption>
+<tr><td>
+<img src="./Images/Sources/jl.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 12.2</b> Target image of Water.</i></caption>
+<tr><td>
+<img src="./Images/Targets/water.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 12.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/watermonster-before.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 12.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/watermonster.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="13">The Lochness Monster in the Panama Canal</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 13.1</b> Source image of the Lochness Monster.</i></caption>
+<tr><td>
+<img src="./Images/Sources/lnm.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 13.2</b> Target image of the Panama Canal.</i></caption>
+<tr><td>
+<img src="./Images/Targets/panama-canal.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 13.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/panamasnacks-before.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 13.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/panamasnacks.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="14">The Lochness Monster in a Pool</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 14.1</b> Source image of the Lochness Monster.</i></caption>
+<tr><td>
+<img src="./Images/Sources/lnm.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 14.2</b> Target image of a pool.</i></caption>
+<tr><td>
+<img src="./Images/Targets/pool.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 14.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/beachpool-before.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 14.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/beachpool.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="15">Kid with President Hayes</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 15.1</b> Source image of a kid.</i></caption>
+<tr><td>
+<img src="./Images/Sources/laser kid.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 15.2</b> Target image of President Hayes.</i></caption>
+<tr><td>
+<img src="./Images/Targets/Hayes.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 15.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/laserhayes-before.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 15.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/laserhayes.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="16">Gull at Beach</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 16.1</b> Source image of a gull.</i></caption>
+<tr><td>
+<img src="./Images/Sources/gull2.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 16.2</b> Target image of a beach.</i></caption>
+<tr><td>
+<img src="./Images/Targets/beach.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 16.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/beachscene-before.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 16.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/beachscene.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="17">Blimp at Beach</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 17.1</b> Source image of a blimp.</i></caption>
+<tr><td>
+<img src="./Images/Sources/blimp.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 17.2</b> Target image of a beach.</i></caption>
+<tr><td>
+<img src="./Images/Targets/beach.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 17.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/blimpscene-before.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 17.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/blimpscene.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="18">Added Apple to a Still-life Painting</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 18.1</b> Source image of an apple.</i></caption>
+<tr><td>
+<img src="./Images/Sources/apple.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 18.2</b> Target image of a still-life painting.</i></caption>
+<tr><td>
+<img src="./Images/Targets/stilllife.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 18.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/stillapple-before.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 18.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/stillapple.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 18.5</b> Zoomed in image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/applezoom.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="19">Boat at Sea</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 19.1</b> Source image of a boat.</i></caption>
+<tr><td>
+<img src="./Images/Sources/boat.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 19.2</b> Target image of the sea.</i></caption>
+<tr><td>
+<img src="./Images/Targets/ocean.jpg" border="3" width="792" height="537"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 19.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/boatatsea-before.jpg" border="3" width="792" height="537"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 19.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/boatatsea.jpg" border="3" width="792" height="537"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="20">Marble on Another Marble</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 20.1</b> Source image of marbles.</i></caption>
+<tr><td>
+<img src="./Images/Sources/balls.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 20.2</b> Target image of different marbles.</i></caption>
+<tr><td>
+<img src="./Images/Targets/marbles.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 20.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/marbles-before.jpg" border="3"</img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 20.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/marbles.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="21">Metal Ball on a Marble</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 21.1</b> Source image of metal balls.</i></caption>
+<tr><td>
+<img src="./Images/Sources/metal.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 21.2</b> Target image of marbles.</i></caption>
+<tr><td>
+<img src="./Images/Targets/marbles.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 21.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/metalballz-before.jpg" border="3"</img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 21.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/metalballz.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="22">Justin Bieber on a Rainbow Gradient</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 22.1</b> Source image of Justin Bieber.</i></caption>
+<tr><td>
+<img src="./Images/Sources/bieber.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 22.2</b> Target image of gradient.</i></caption>
+<tr><td>
+<img src="./Images/Targets/gradient.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 22.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/rainbowbieber-before.jpg" border="3"</img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 22.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/rainbowbieber.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="23">Cat in Space</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 23.1</b> Source image of a cat.</i></caption>
+<tr><td>
+<img src="./Images/Sources/longcat.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 23.2</b> Target image of space.</i></caption>
+<tr><td>
+<img src="./Images/Targets/space.jpg" border="3" width="800" height="600"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 23.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/spacecat-before.jpg" border="3"  width="800" height="600"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 23.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/spacecat.jpg" border="3" width="800" height="600"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="24">Ball on Checkerboard</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 24.1</b> Source image of a red ball.</i></caption>
+<tr><td>
+<img src="./Images/Sources/ball.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 24.2</b> Target image of a checkerboard.</i></caption>
+<tr><td>
+<img src="./Images/Targets/checker.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 24.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/checkerball-before.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 24.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/checkerball.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 24.5</b> Zoomed in image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/checkerball-zoom.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="25">Monet on Monet</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 25.1</b> Source image of a Monet painting.</i></caption>
+<tr><td>
+<img src="./Images/Sources/monet2.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 25.2</b> Target image of another Monet painting.</i></caption>
+<tr><td>
+<img src="./Images/Targets/monet1.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 25.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/monetcombine-before.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 25.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/monetcombine.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="26">Shack in Fog</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 26.1</b> Source image of a shack.</i></caption>
+<tr><td>
+<img src="./Images/Sources/shack.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 26.2</b> Target image of a foggy scene.</i></caption>
+<tr><td>
+<img src="./Images/Targets/fog.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 26.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/shackfog-before.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 26.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/shackfog.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 26.5</b> Zoomed in image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/shackfog-zoom.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<hr>
+<h3><a name="27">Cloud in Sky</a></h3>
+<table align="center">
+<caption align="bottom"><i><b>Figure 27.1</b> Source image of clouds.</i></caption>
+<tr><td>
+<img src="./Images/Sources/Clouds.jpg" border="3" width="640" height="512"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 27.2</b> Target image of the sky.</i></caption>
+<tr><td>
+<img src="./Images/Targets/clear sky.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 27.3</b> Image before seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/skycloud-before.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+<table align="center">
+<caption align="bottom"><i><b>Figure 27.4</b> Image after seamless cloning.</i></caption>
+<tr><td>
+<img src="./Images/Results/skycloud.jpg" border="3"></img>
+</td></tr>
+</table><br>
+
+
+</center>
+
+<br><br><hr>
+<h2>Discussion</h2>
+
+<h3>Perception of Seamlessness</h3>
+
+A seamlessly cloned image as observed by a human should ideally provide no discernible border. A clear difference in texture or perceived distance/shading along the boundary of the cloned pixels indicates a failing of the algorithm, the degree to which may vary along perceived color and patterning.
+
+<h3>Strengths</h3>
+
+The algorithm tends to succeed in seamlessly cloning source images into target images when the edge pixels of the masked source vary similarly to the edge pixels of the target image. Similar textures in patterning may vary wildly in color along the relevant edges and still perform well in the seamless cloning algorithm. Fundamentally, this is due to the algorithm working on the idea of guided interpolation with gradients: so long as the pixels may vary with the gradients and still match closely with the edge pixels, the algorithm succeeds in its purpose. Thus, with already similar patterning of relative pixel values, the algorithm merely needs to vary large swathes of pixel colors by relatively constant amounts thus maintaining closeness to the guiding gradient. Examples of cloned images that we considered good are amongst Figures <a href="#3">3.5</a>, <a href="#4">4.4</a>, <a href="#8">8.4</a>, <a href="#9">9.4</a>, <a href="#14">14.4</a>, <a href="#17">17.4</a>, and <a href="#18">18.4</a>.
+<br><br>
+
+Computationally, this algorithm is favorable in that it doesn't get stuck in local minima - there's only a single possible minimum error in an overdetermined linear system of equations.
+
+<h3>Weaknesses</h3>
+
+High frequency textures interacting with low frequency textures along the edge pixels cause a clear seam in the image, due to the algorithm being incapable of varying the patterning of solution pixels too far from the source gradient despite the vastly different gradient located just outside of the mask; the algorithm simply isn't meant to work with this kind of data, as it considers only gradients, and when those don't match up it has no other information to fall back on to modify the equations or acquire a better fit than that provided by the gradient. Good examples include Figures <a href="#5">5.4</a> (there's a discernible line between the canvas texture and skin texture), <a href="#11">11.4</a>, <a href="#12">12.4</a>, <a href="#15">15.4</a>, <a href="#18">18.4</a> (look especially at Figure <a href="#18">18.5</a> - it reveals the texture of the canvas and artist strokes in the original image not making it onto the cloned pixels), and <a href="#19">19.4</a> (look closely at the water just around the boat and the still water surrounding it).
+<br><br>
+The algorithm also for different intensities of backgrounds of source and target images may wash out the source pixels cloned into the target, changing their colors significantly. While this is usually desirable, on occassion it may result in some strange discolorations. Clear examples include Figures <a href="#4">4.4</a>, <a href="#5">5.4</a>, <a href="#6">6.4</a>, <a href="#7">7.4</a>, <a href="#10">10.4</a>, <a href="#13">13.4</a>, <a href="#15">15.4</a>, <a href="#16">16.4</a>, <a href="#22">22.4</a>, and <a href="#23">23.4</a>.
+<br><br>
+The algorithm's performance depends on the ratio of selected pixels to edge pixels. Selecting pixels such that the ratio of selected pixels to edge pixels is large causes the algorithm to effectively weight (because this is effectively a linear-regression algorithm) the patterning of the textures in the selected pixels higher, and thus more likely that differing texture patterns will be noticeable over the patterns that bleed through from the edge via the interpolation calculations. The vice-versa also occurs.
+<br><br>
+Due to the algorithm anchoring only the edge pixels of the target image, if the masked source just so happens to have a pixel border and gradient matching exactly that of the target image or is very similar, the seamlessly cloned image will be no different than the normally cloned image. This is only a minor concern, as in real world data the chance of this occurring is negligible.
+<br><br>
+What this algorithm doesn't accomplish (and what it wasn't purposed to accomplish, but it's worth mentioning these anyway), is making the seamless images appear to be properly three-dimensionally oriented or deal with lighting beyond that provided already by the source and target images. Note the inconsistencies of specular highlighting in Figures <a href="#20">20.4</a> and <a href="#21">21.4</a>, as well as shadow differences in Figures <a href="#6">6.4</a> (unnaturally light highlighting across the face), <a href="#7">7.4</a> (unnaturally dark shadows below the ridge of the brow), <a href="#13">13.4</a> and others (any small change in lighting between scenes produces these artifacts).
+
+<h3>Different Gradient Measurement Methods</h3>
+
+One of the strange things we noticed with our algorithm was our choice of how we measured the gradient. Anchoring the edge pixels and assigning the x and y gradients of selected pixels to be the average of left-right or up-down adjacent differences resulted in much more washed-out images than taking the gradient as the adjacent differences at each pixel. This is due to the left-right/up-down averaging process effectively smoothing the gradient of each pixel, causing relative peaks to diminish and relative valleys to fade. This provides less variation, which gives the gradient more uniformity, which consequently gives the algorithm's linear-regression step more freedom to minimize color variation at the edge pixels and degrade the contrast of the source image, especially for images chosen with relatively constant edge pixel values. The phenomena can be observed by comparing the results in Figure <a href="#3">3.5</a> (one-sided adjacent) and Figure <a href="#3">3.6</a> (average of both sides).
+
+<br><br><hr>
+<h2>References</h2>
+
+Patrick P&eacute;rez, Michel Gangnet, and Andrew Blake. 2003. <u>Poisson image editing</u>. <i>ACM Trans. Graph.</i> 22, 3 (July 2003), 313-318. DOI=10.1145/882262.882269 <a href="http://doi.acm.org/10.1145/882262.882269">http://doi.acm.org/10.1145/882262.882269"</a>

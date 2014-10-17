@@ -1,0 +1,125 @@
+% Author: A.J. Mehalic with a little, teeny bit Tom Crossland
+% Date Last Updated: 4/24/11
+
+function [originalImage,mask,cutTarget,pX,pY] = selectiveCut(source,target) 
+%note: source and target are pathnames, not actual matricies.
+
+close all;
+imtool close all;
+
+home = cd('Images');
+cd('Sources');
+originalImage = imread(source);
+cd(home);
+
+subplot(2, 2, 1);
+imshow(originalImage, []);
+title('Original Image', 'FontSize', 20);
+set(gcf, 'Position', get(0,'Screensize')); % Maximize figure.
+message = sprintf('Left click and hold to begin drawing.\nSimply lift the mouse button to finish');
+uiwait(msgbox(message));
+draw = imfreehand();
+% Create and display the mask.
+mask = draw.createMask();
+subplot(2, 2, 2);
+imshow(mask);
+title('Mask of the selected region', 'FontSize', 20);
+
+% boundary coordinates of the freehand drawn region.
+structBoundaries = bwboundaries(mask);
+xy = structBoundaries{1};
+x = xy(:, 2);
+y = xy(:, 1);
+subplot(2, 2, 1);
+hold on;
+plot(x, y, 'LineWidth', 2);
+
+% Boundary of Mask
+[row,col] = find(mask);
+  
+burnedImage = originalImage;
+burnedImage(mask) = 255;
+% Display the image with the mask "burned in."
+subplot(2, 2, 3);
+imshow(burnedImage);
+title('New image with mask burned into image', 'FontSize', 20);
+
+% Mask the image and display it.
+% Will keep only the part of the image that's inside the mask, zero outside mask.
+maskedImage1 = originalImage(:,:,1);
+maskedImage2 = originalImage(:,:,2);
+maskedImage3 = originalImage(:,:,3);
+maskedImage1(~mask) = 0;
+maskedImage2(~mask) = 0;
+maskedImage3(~mask) = 0;
+maskedImage = cat(3,maskedImage1,maskedImage2,maskedImage3);
+subplot(2, 2, 4);
+imshow(maskedImage);
+title('Masked Image', 'FontSize', 20); 
+pause(2)
+close all;
+originalImage = originalImage(min(row)-1:max(row)+1,min(col)-1:max(col)+1,:);
+
+% % % % % % % % % % % % % % % % % % % % % % % % % % % % % % %
+% resize mask
+maskedImage = maskedImage(min(row)-1:max(row)+1,min(col)-1:max(col)+1,:);
+mask = mask(min(row)-1:max(row)+1,min(col)-1:max(col)+1);
+% % % % % % % % % % % % % % % % % % % % % % % % % % % % % % %
+cd('Images');
+cd('Targets');
+targetImage = imread(target);
+cd(home);
+
+while 1
+  imshow(targetImage);
+  title('Target Image', 'FontSize', 20);
+  set(gcf, 'Position', get(0,'Screensize')); % Maximize figure.
+  message = sprintf('Left click where you want the image to be placed.\nThen press Enter to confirm');
+  uiwait(msgbox(message));
+  [row, col] = getpts;
+  row = round(row);
+  col = round(col);
+  
+  [m n] = size(mask);
+  
+  pY = col-round(m/2);
+  pX = row-round(n/2);
+  
+  % Leave room for poissonClone to have the pixel boundary it needs of the
+  % source image by boundary checking one pixel inward.
+  if pX < 2 || pX + n > size(targetImage,2)-1 || pY < 2 || pY + m > size(targetImage,1)-1
+    uiwait(msgbox('Source boundaries are placed outside of destination image boundaries. Try again.'));
+    continue;
+  end
+  
+  cutTarget = targetImage(pY:pY+m-1,pX:pX+n-1,:);
+  
+  burnedCutTarget = cutTarget;
+  burnedCutTargetRed = burnedCutTarget(:,:,1);
+  burnedCutTargetRed(mask) = 255;
+  burnedCutTarget(:,:,1) = burnedCutTargetRed;
+  burnedTargetImage = targetImage;
+  burnedTargetImage(pY:pY+m-1,pX:pX+n-1,:) = burnedCutTarget;
+  
+  imshow(burnedTargetImage);
+  title('Target Image (mask burned in)', 'FontSize', 20);
+  set(gcf, 'Position', get(0,'Screensize')); % Maximize figure.
+  val = questdlg('Is this where you want the image to be cloned?', '', 'Yes', 'No', 'No');
+  if strcmp(val, 'Yes')
+    break;
+  end
+end
+
+close all;
+
+cd('Images');
+cd('Masks');
+[path name ext] = fileparts(source);
+imwrite(mask,[name '-mask' ext]);
+imwrite(maskedImage,[name '-maskedSource' ext]);
+imwrite(cutTarget,[name '-cutTarget' ext]);
+cd(home);
+% % % % % % % % % % % % % % % % % % % % % % % % % % % % % % %
+end
+
+

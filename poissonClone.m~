@@ -1,0 +1,62 @@
+%Tom Crossland 
+function [target] = poissonClone(source,mask,target)
+if sum((size(source) ~= size(mask)) | (size(source) ~= size(target)));
+  error('Source, mask, and target images must all be the same.');
+end
+[m n] = size(source);
+
+mask = logical(mask);
+maskLeftEdge = (mask(:,[2:end end]) - mask) > 0;
+maskRightEdge = (mask(:,[1 1:end-1]) - mask) > 0;
+maskTopEdge = (mask([2:end end],:) - mask) > 0;
+maskBottomEdge = (mask([1 1:end-1],:) - mask) > 0;
+
+maskEdges = maskLeftEdge | maskRightEdge | maskTopEdge | maskBottomEdge;
+
+maskAll = maskEdges | mask;
+
+nSourcePix = sum(sum(mask));
+nEdgePix = sum(sum(maskEdges));
+PXindexToAindex = reshape(cumsum(maskAll(:)), m, n);
+nEquations = nSourcePix*2+nEdgePix;
+A = sparse(nEquations,nSourcePix);
+b = zeros(nEquations,1);
+
+
+Aindex = @() PXindexToAindex(i,j);
+AindexLeft = @() PXindexToAindex(i,j-1);
+AindexRight = @() PXindexToAindex(i,j+1);
+AindexTop = @() PXindexToAindex(i-1,j);
+AindexBottom = @() PXindexToAindex(i+1,j);
+bIndex = 1;
+for i=1:m
+  for j=1:n
+    if maskEdges(i,j)
+      % S'(edge) = target(edge)
+      A(bIndex,Aindex(i,j)) = 1;
+      b(bIndex) = target(i,j);
+      bIndex = bIndex + 1;
+    elseif mask(i,j)
+      % dS'/dx = dT/dx
+      A(bIndex,[AindexRight(i,j) AindexLeft(i,j)]) = [1 -1];
+      b(bIndex) = (source(i,j+1) - source(i,j-1))/2;
+      bIndex = bIndex + 1;
+      
+      % dS'/dy = dT/dy
+      A(bIndex,[AindexBottom(i,j) AindexTop(i,j)]) = [1 -1];
+      b(bIndex) = (source(i+1,j) - source(i-1,j))/2;
+      bIndex = bIndex + 1;
+    end
+  end
+end
+
+%Find inverse and solve systems of equation
+x = A\b;
+
+for i=1:m
+  for j=1:n
+    if mask(i,j)
+      target(i,j) = x(PXindexToAindex(i,j));
+    end
+  end
+end

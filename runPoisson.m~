@@ -1,0 +1,32 @@
+% Tom Crossland
+function [] = runPoisson(sFile,tFile,destFile)
+
+    %Perform selective cut
+    [source,mask,target,Px,Py] = selectiveCut(sFile,tFile);
+    
+    %Convert source, mask, and target into double matrices
+    S = im2double(source);
+    M = im2double(mask);
+    T = im2double(target);
+    
+    %Get the pre-seamless cloning image
+    home = cd('Images');
+    cd('Targets');
+    fullT = imread(tFile);
+    cd(home);
+    
+    %createBeforeImg(S,M,fullT,Px,Py,destFile);
+    
+    %Perform seamless cloning on significant patch
+    sol = poissonClone(S(:,:,1),M,T(:,:,1));
+    
+    %Get the post-seamless cloning image
+    [m n] = size(sol);
+    fullT(Py:Py+m-1,Px:Px+n-1) = sol; 
+    
+    %Save post-seamless cloning image
+    cd('Images');
+    cd('After Seamless Clone');
+    imwrite(fullT,destFile);
+    cd(home);
+end
